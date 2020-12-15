@@ -1,7 +1,7 @@
 ---
 title: "Taylor HT Data Analysis"
 author: "Taylor Ely and Zack Gold"
-date: "12/04/2020"
+date: "12/12/2020"
 output: html_document
 ---
 
@@ -18,7 +18,6 @@ library(treemapify)
 library(vegan)
 library(plotly)
 library(optparse)
-library("qiimer")
 library(ggrepel)
 library(wesanderson) 
 library(cluster)
@@ -34,27 +33,32 @@ library(RColorBrewer)
 library(treemap)
 library(iNEXT)
 library(stats)
+library(here)
 ```
 #Load All Data Sets
 ```{r}
 
+here()
+
 #All Species eDNA Index
-t_index <- read.csv("ASV_taylor_edna_index_no_mammals.csv")
-
-#Species Monitored by NPS, PISCO, and Reef Check
-monitored <- read.csv("ASV_taylor_edna_index_monitored_only.csv")
-
-#Species Monitored by Only Reef Check
-reefcheck <- read.csv("ASV_taylor_edna_index_reefcheck_only.csv")
+t_index <- readRDS(here("decontam","Output_R","taylor_pre_occupancy_results_sum.taxonomy_bio_reps_separate_eDNA_index.RDS"))
+t_reads <- readRDS(here("decontam","Output_R","taylor_pre_occupancy_results_sum.taxonomy_bio_reps_separate_read_counts.RDS"))
 
 #Metadata
 metadata <- read.table("MetaData_eDNA_degradation2020.txt", header = 1, sep = "\t", stringsAsFactors = F)
 
+monitored_species <- read.table("Monitored_Species_list_20201204.txt", header = 1, sep = "\t", stringsAsFactors = F)
 
+
+monitored_species$Scientific.name -> monitored_species_list
+
+monitored_species %>% 
+  filter(., RCCA=="X") %>% dplyr::select(Scientific.name) -> rcca_species_list
+
+rcca_species_list$Scientific.name -> rcca_species_list
 ```
 #Figure 1. Detection of Foreign eDNA over Time
 ```{r}
-
 #Select Grass Carp Species Only
 t_index %>% as.data.frame() %>% 
   filter(., sum.taxonomy =="Eukaryota;Chordata;Actinopteri;Cypriniformes;Cyprinidae;Ctenopharyngodon;Ctenopharyngodon idella")-> gcarp_idx
@@ -71,40 +75,38 @@ gcarp_idx_clean[1:36,] -> gcarp_idx_clean
 
 #Format Data
 gcarp_idx_clean %>% 
-  rename(., original_name =e_index, e_index=gathercols) -> gcarp_idx_clean
+  rename(., Names =e_index, e_index=gathercols) -> gcarp_idx_clean
 
 gcarp_idx_clean$e_index <- as.numeric(gcarp_idx_clean$e_index)
 
 gcarp_idx_clean %>% 
-  left_join(metadata) %>% 
-  filter(., Names != "T0") ->eDNA_data
-
-
-#Generate Colors
-wes_palette("Darjeeling1") -> col_darjeeling1
-col_species<-c(col_darjeeling1[2],col_Cavalcanti1[2], col_Darjeeling2[2])
-col_nmds<-c(col_Zissou1[1],col_Cavalcanti1[2],col_Darjeeling2[3])
-wes_palette("IsleofDogs1") -> col_dogs1
-wes_palette("Cavalcanti1") -> col_Cavalcanti1
-wes_palette("BottleRocket2") -> col_BottleRocket2
-wes_palette("BottleRocket1") -> col_BottleRocket1
-wes_palette("Royal1") -> col_Royal1
-wes_palette("Royal2") -> col_Royal2
-wes_palette("Zissou1") -> col_Zissou1
-wes_palette("Darjeeling2") -> col_Darjeeling2
-wes_palette("Rushmore1") -> col_Rushmore1
+  left_join(metadata) ->eDNA_data
 
 #Plot Grass Carp eDNA Index vs. Time after Foreign eDNA Introduction 
-jpeg("Figure1.tiff", width=5000, height=3300, res=600)
-timepoint<- c(1.5,1.5,1.5,3,3,3,4.5,4.5,4.5,6,6,6,7.5,7.5,7.5,9,9,9,10.5,10.5,10.5,12,12,12,24,24,24)
-grasscarp_conc<-eDNA_data$e_index
-grasscarp_conc2<-grasscarp_conc[c(-1,-2,-3,-7,-8,-9,-10,-11,-12)] # remove before and after times
-plot(timepoint,grasscarp_conc2,pch="", xlab = "Time after Foreign eDNA Introduction (hr)", ylab=" ", cex.lab=1.3, cex.axis=1.3,  ylim=c(0,0.4), axes=FALSE)+ axis(1, at = seq(0, 25, by = 1.5)) + axis(2, at = seq(0, 0.4, by = 0.1))+ title(ylab="eDNA Index", line=2.5, cex.lab=1.3)
-points(timepoint,grasscarp_conc2, pch=0:2, cex=2.5)
-legend(20, 0.4, legend=c("Site A", "Site B", "Site C"),
-       pch = 0:2, cex=1.4)
-dev.off()
+fig1 <- eDNA_data %>% 
+  filter(., Time > 1) %>% 
+  filter(., Time < 25) %>% 
+  ggplot(., aes(x=Time, y=e_index, shape=Replicate), group=Replicate) + 
+  geom_point(size=4) +
+  theme_ranacapa()  +
+  scale_shape_manual(values=c(0, 1, 2)) + 
+  ylab("eDNA Index Score") +
+  labs(shape="Site") +  
+            scale_x_continuous(breaks=c(3, 6, 9, 12, 24)) + xlab( "Time (hrs)") +
+    theme(axis.title.x = element_text(size=20,face= "bold", colour= "black"),
+          axis.title.y = element_text(size=20,face= "bold", colour= "black"),
+          legend.title = element_text(size=16,face= "bold", colour= "black"),
+          axis.text= element_text(size=14,face= "plain", colour= "black"),
+          legend.text = element_text(size=14,face= "plain", colour= "black")) 
 
+
+ggsave(filename = here("figures","Figure1.eps"),
+       plot = fig1,
+       device = cairo_ps,
+       dpi = 600,
+       width = 8,
+  height = 8,
+  units = c("in"))
 ```
 
 #Ranacapa Code
@@ -119,7 +121,7 @@ dev.off()
 #' @export
 group_anacapa_by_taxonomy <- function(taxon_table) {
   # If tables were made in New Anacapa (with Domain), get rid of domain...
-  if(stringr::str_count(taxon_table$sum.taxonomy, ";")[1] == 6) {
+  if(stringr::str_count(taxon_table$sum.taxonomy, ";")[1] == 7) {
     taxon_table$sum.taxonomy = gsub(pattern = "^.*?;", replacement = "", x = taxon_table$sum.taxonomy)
   }
   taxon_table %>%
@@ -163,12 +165,12 @@ convert_anacapa_to_phyloseq <- function(taxon_table, metadata_file) {
   # Split the taxonomic path on semicolons, and turn the resulting matrix into
   # a phyloseq tax_table object
   taxon_names <- reshape2::colsplit(rownames(taxon_table2), ";",
-                          names = c("Phylum","Class","Order","Family","Genus","Species")) %>%
+                          names = c("Domain","Phylum","Class","Order","Family","Genus","Species")) %>%
     as.matrix
   rownames(taxon_names) <- rownames(taxon_table2)
 
   tax_physeq <- phyloseq::tax_table(taxon_names)
-  colnames(tax_physeq) <- c("Phylum","Class","Order","Family","Genus","Species")
+  colnames(tax_physeq) <- c("Domain","Phylum","Class","Order","Family","Genus","Species")
 
   # Make a phyloseq object out of the otu_table and the tax_table objects
   physeq_object <- phyloseq::phyloseq(ana_taxon_table_physeq, tax_physeq)
@@ -232,9 +234,10 @@ scrub_seqNum_column <- function(taxon_table) {
 scrub_taxon_paths <- function(taxon_table) {
   to_return <- taxon_table
   new_sum_tax <- reshape2::colsplit(taxon_table$sum.taxonomy, ";",
-                          names = c("Phylum", "Class", "Order", "Family", "Genus", "Species"))
+                          names = c("Domain","Phylum", "Class", "Order", "Family", "Genus", "Species"))
 
   new_sum_tax <- new_sum_tax %>%
+    dplyr::mutate(Domain = ifelse(is.na(Domain) | Domain == "", "unknown", Domain)) %>%
     dplyr::mutate(Phylum = ifelse(is.na(Phylum) | Phylum == "", "unknown", Phylum)) %>%
     dplyr::mutate(Class = ifelse(is.na(Class) | Class == "", "unknown", Class)) %>%
     dplyr::mutate(Order = ifelse(is.na(Order) | Order == "", "unknown", Order)) %>%
@@ -242,7 +245,8 @@ scrub_taxon_paths <- function(taxon_table) {
     dplyr::mutate(Genus = ifelse(is.na(Genus) | Genus == "", "unknown", Genus)) %>%
     dplyr::mutate(Species = ifelse(is.na(Species)| Species == "", "unknown", Species))
 
-  new_sum_tax2 <- paste(new_sum_tax$Phylum,
+  new_sum_tax2 <- paste(new_sum_tax$Domain,
+                        new_sum_tax$Phylum,
                         new_sum_tax$Class,
                         new_sum_tax$Order,
                         new_sum_tax$Family,
@@ -302,18 +306,56 @@ validate_input_files <- function(taxon_table, metadata_file) {
 
 ```
 
-#Create Phyloseq Objects
+
+
+### Create Phyloseq Objects
 ```{r}
 #Create phyloseq objects
 
+metadata %>% 
+  dplyr::select(-original_name) -> metadata2
+
 #All Species
-physeq_obj.ind <- convert_anacapa_to_phyloseq(t_index, metadata)
+physeq_obj.ind <- convert_anacapa_to_phyloseq(t_index, metadata2)
+```
 
+```{r}
+#removed Lab Contaminant ASVs
+badTaxa = c("","Unassigned",
+            "NA",
+            "Eukaryota;Chordata;;NA;;;",
+             "Eukaryota;Chordata;Actinopteri;;;;",
+            "Eukaryota;Chordata;Actinopteri;Salmoniformes;Salmonidae;Salmo;Salmo salar",
+            "Eukaryota;Chordata;Mammalia;Primates;Hominidae;Homo;Homo sapiens",
+            "Eukaryota;Chordata;Mammalia;Artiodactyla;Bovidae;Bos;Bos taurus",
+            "Eukaryota;Chordata;Actinopteri;Salmoniformes;Salmonidae;Salmo;",
+            "Eukaryota;Chordata;Actinopteri;Cypriniformes;Cyprinidae;Ctenopharyngodon;Ctenopharyngodon idella",
+            "Eukaryota;Chordata;Aves;Galliformes;Phasianidae;Gallus;Gallus gallus",
+             "Eukaryota;Chordata;Mammalia;Artiodactyla;Suidae;Sus;Sus scrofa")
+
+goodTaxa_1 <- setdiff(taxa_names(physeq_obj.ind), badTaxa)
+physeq_obj.ind <- prune_taxa(goodTaxa_1, physeq_obj.ind)
+```
+
+```{r}
 #Species Monitored by NPS, PISCO, and Reef Check
-physeq_obj.monitored <- convert_anacapa_to_phyloseq(monitored, metadata)
+taxa_names(physeq_obj.ind) %>% 
+  as.tibble() %>% 
+  separate(., value, into = c("Domain","Phylum","Class","Order","Family","Genus","Species"), sep=";", remove=FALSE) %>% 
+  filter(., Species %in% monitored_species_list) -> monitored_species_path
 
+physeq_obj.monitored <- prune_taxa(monitored_species_path$value, physeq_obj.ind)
+```
+
+
+```{r}
 #Species Only Monitored by ReefCheck
-physeq_obj.reefcheck <- convert_anacapa_to_phyloseq(reefcheck, metadata)
+taxa_names(physeq_obj.ind) %>% 
+  as.tibble() %>% 
+  separate(., value, into = c("Domain","Phylum","Class","Order","Family","Genus","Species"), sep=";", remove=FALSE) %>% 
+  filter(., Species %in% rcca_species_list) -> rcca_species_path
+
+physeq_obj.reefcheck <- prune_taxa(rcca_species_path$value, physeq_obj.ind)
 
 ```
 
@@ -352,17 +394,36 @@ col10= palette(brewer.pal(n=10,name="PuBuGn"))
 colfunc<-colorRampPalette(c(col2.gr[2],col3.gr[5],"springgreen",col9.gr[1]))
 plot(rep(1,9),col=(colfunc(9)),pch=19,cex=2)
 length(col10)
+
+#Generate Colors
+wes_palette("Darjeeling1") -> col_darjeeling1
+wes_palette("IsleofDogs1") -> col_dogs1
+wes_palette("Cavalcanti1") -> col_Cavalcanti1
+wes_palette("BottleRocket2") -> col_BottleRocket2
+wes_palette("BottleRocket1") -> col_BottleRocket1
+wes_palette("Royal1") -> col_Royal1
+wes_palette("Royal2") -> col_Royal2
+wes_palette("Zissou1") -> col_Zissou1
+wes_palette("Darjeeling2") -> col_Darjeeling2
+wes_palette("Rushmore1") -> col_Rushmore1
+col_species<-c(col_darjeeling1[2],col_Cavalcanti1[2], col_Darjeeling2[2])
+col_nmds<-c(col_Zissou1[1],col_Cavalcanti1[2],col_Darjeeling2[3])
 ```
 
 #Figure 2. Heat Map of Monitored Species Detected Over Time. Also Figure S1: Heatmap of all taxa
 ```{r}
 taxa_names(physeq_obj.ind) %>% as_tibble() %>% 
-  separate(., col=value, into=c("Phylum","Class", "Order", "Family", "Genus", "Species"), sep="\\;",remove = FALSE) %>%
+  separate(., col=value, into=c("Domain","Phylum","Class", "Order", "Family", "Genus", "Species"), sep="\\;",remove = FALSE) %>%
   mutate(., Species = ifelse(Species=="", Genus, Species)) %>% 
   mutate(., Species = ifelse(Species=="", Family, Species)) %>% 
-  mutate(., Species = ifelse(Species=="", Order, Species))-> final_namers
+  mutate(., Species = ifelse(Species=="", Order, Species)) %>% 
+  mutate(., Species = ifelse(Species=="", Class, Species))-> final_namers
+```
 
-# Heat map for monitored species (Fig 2)
+
+### Heat map for monitored species (Fig 2)
+
+```{r}
 #order taxa by abundance over samples
 ##extract otu_table and make it as a dataframe
 abundance_order<-as(otu_table(physeq_obj.monitored), "matrix")
@@ -373,35 +434,41 @@ rank_species<-row.names(OTUdf)
 OTUdf$species<-rank_species
 # order
 order<-OTUdf[order(OTUdf$rank),]
-View(order)
+
 # make the correct order a vector
 rank<-order$species
 rank_order<-order$rank
 abundance_plot<-cbind(rank, rank_order)
 abundance_plot<-as.data.frame(abundance_plot)
-abundance_plot<- abundance_plot %>% separate(rank, c("phylum", "class", "order", "family", "genus", "species"), ";")
+abundance_plot<- abundance_plot %>% separate(rank, c("domain", "phylum", "class", "order", "family", "genus", "species"), ";")
 abundance_plot$percentage<-(rank_order/36)*100
 
 # Also make this supplementary figrure to visualize detection in samples
-jpeg("detection_plot.tiff", width=5000, height=3300, res=600)
+jpeg(here("figures","detection_plot.tiff"), width=5000, height=3300, res=600)
 percentage_plot <- ggplot(abundance_plot, aes(x = reorder(species, percentage), y = percentage))+
   geom_bar(stat="identity",  width=0.8,  fill="steelblue") + ylim(NA,100) + coord_flip() + theme_classic() + labs(y= "Detection Percentage", x = "Monitored Species") 
 percentage_plot
 dev.off()
+```
 
+```{r}
 # make zeros NAs for the na.value to be white
 physeq_for_heatmap<-physeq_obj.monitored
 otu_table(physeq_for_heatmap)[otu_table(physeq_for_heatmap) == 0.0000] <-NA
 
 #make figure
-jpeg("ordered_figure2.tiff", width=5300, height=3300, res=600)
+jpeg(here("figures","ordered_figure2.tiff"), width=5300, height=3300, res=600)
 monitored_heatmap<- plot_heatmap(physeq_for_heatmap, sample.label="Time_Point", taxa.label="Species", taxa.order=rank, sample.order="Time_Point",low="#66CCFF", high="#000033", na.value="white")+ scale_fill_gradient(name = "eDNA index", low="#66CCFF", high="#000033", na.value="white", breaks=c(0.25, 0.5, 0.75, 1.0))+theme (axis.text.x = element_text(size=8), axis.text.y = element_text(size=8), axis.title.x = element_text(size=20),axis.title.y = element_text(size=20), legend.title = element_text(size=20), legend.text = element_text(size=16), legend.text.align = 0 )
 monitored_heatmap$scales$scales[[1]]$name <- "Time Point Sampled"
 monitored_heatmap
 dev.off()
+```
 
 
-#Heat Map of all taxa (Figure S2 )
+
+### Heat Map of all taxa (Figure S2 )
+
+```{r}
 # First I need to order taxa by abundance over samples
 ##extract otu_table and make it as a dataframe
 abundance_order_all<-as(otu_table(physeq_obj.ind), "matrix")
@@ -412,17 +479,24 @@ rank_species_all<-row.names(OTUdf_all)
 OTUdf_all$species<-rank_species_all
 ## order
 order_all<-OTUdf_all[order(OTUdf_all$rank_all),]
-View(order_all)
+
+final_namers
 ## make the correct order a vector
 rank_all<-order_all$species
 rank_order_all<-order_all$rank_all
 abundance_plot_all<-cbind(rank_all, rank_order_all)
 abundance_plot_all<-as.data.frame(abundance_plot_all)
-abundance_plot_all<- abundance_plot_all %>% separate(rank_all, c("phylum", "class", "order", "family", "genus", "species"), ";")
+abundance_plot_all<- abundance_plot_all %>% separate(rank_all, c("Domain","Phylum", "Class", "Order", "Family", "Genus", "Species"), ";")
+
+abundance_plot_all %>% 
+  mutate(., Species = ifelse(Species=="", Genus, Species)) %>% 
+  mutate(., Species = ifelse(Species=="", Family, Species)) %>% 
+  mutate(., Species = ifelse(Species=="", Order, Species)) %>% 
+  mutate(., Species = ifelse(Species=="", Class, Species)) -> abundance_plot_all
 abundance_plot_all$percentage_all<-(rank_order_all/36)*100
 
 # Maybe use this figure?
-percentage_plot_all <- ggplot(abundance_plot_all, aes(x = reorder(species, percentage_all), y = percentage_all))+
+percentage_plot_all <- ggplot(abundance_plot_all, aes(x = reorder(Species, percentage_all), y = percentage_all))+
   geom_bar(stat="identity",  width=0.8,  fill="steelblue") + ylim(NA,100) + coord_flip() + theme_classic() + labs(y= "Detection Percentage", x = "Taxa") 
 percentage_plot_all
 
@@ -431,24 +505,35 @@ percentage_plot_all
 physeq_for_heatmap_all<-physeq_obj.ind
 otu_table(physeq_for_heatmap_all)[otu_table(physeq_for_heatmap_all) == 0.0000] <-NA
 
+tax_table(physeq_for_heatmap_all) %>% as.data.frame() %>% 
+   mutate(., Species2 = ifelse(Species=="", Genus, Species)) %>% 
+  mutate(., Species2 = ifelse(Species=="", Family, Species)) %>% 
+  mutate(., Species2 = ifelse(Species=="", Order, Species)) %>% 
+  mutate(., Species2 = ifelse(Species=="", Class, Species)) -> physeq_for_heatmap_all_taxa_update
+
+rownames(physeq_for_heatmap_all_taxa_update) <- rownames(tax_table(physeq_for_heatmap_all))
+tax_table(as.matrix(physeq_for_heatmap_all_taxa_update)) -> tax_table_update
+tax_table_update
+tax_table(physeq_for_heatmap_all) <- tax_table_update
+
 #make the figure
-jpeg("FigureS1.jpg", width=5300, height=3300, res=600)
-heat_all <- plot_heatmap(physeq_for_heatmap_all, sample.label="Time_Point", taxa.label="Species", taxa.order=rank_all, sample.order="Time_Point",low="#66CCFF", high="#000033", na.value="white") + scale_fill_gradient(name = "eDNA index", low="#66CCFF", high="#000033", na.value="white", breaks=c(0.25,0.5,0.75,1.0)) + theme (axis.text.x = element_text(size=8), axis.title.x = element_text(size=20),axis.title.y = element_text(size=20), legend.title = element_text(size=20), legend.text = element_text(size=16), legend.text.align = 0 ) 
+jpeg(here("figures","FigureS1.jpg"), width=5300, height=3300, res=600)
+heat_all <- plot_heatmap(physeq_for_heatmap_all, sample.label="Time_Point", taxa.label="Species2", taxa.order=rank_all, sample.order="Time_Point",low="#66CCFF", high="#000033", na.value="white") + scale_fill_gradient(name = "eDNA index", low="#66CCFF", high="#000033", na.value="white", breaks=c(0.25,0.5,0.75,1.0)) + theme (axis.text.x = element_text(size=8), axis.title.x = element_text(size=20),axis.title.y = element_text(size=20), legend.title = element_text(size=20), legend.text = element_text(size=16), legend.text.align = 0 ) 
 heat_all$scales$scales[[1]]$name <- "Time Point Sampled"
 heat_all
 dev.off()
 
 
-
 #only Reef Check monitored species 
-jpeg("heatmap_monitored.tiff", width=4500, height=3300, res=600)
+jpeg(here("heatmap_monitored.tiff"), width=4500, height=3300, res=600)
 p<-plot_heatmap(physeq_obj.reefcheck, sample.label="Time_Point", taxa.label="Species", sample.order="Time_Point",low="#66CCFF", high="#000033", na.value="white", trans = log_trans(base = 1.5))+ scale_fill_gradient(name = "eDNA index", low="#66CCFF", high="#000033", na.value="white", breaks=waiver(),trans = log_trans(base = 1.5)) 
 p$scales$scales[[1]]$name <- "Time Point Sampled"
 p
 dev.off()
 ```
-#Figure 3
+# Figure 3
 
+## PERMANOVA
 ```{r}
 #Generate Vegan formatted data table
 sampledf_2 <- data.frame(sample_data(physeq_obj.ind))
@@ -462,6 +547,7 @@ broom::tidy(adonis(carnivore_rel_abun_2 ~ sampledf_2$Direction+sampledf_2$Replic
 
 ```
 
+## Ad Hoc Tests
 ```{r}
 #Permanova d and dissimMethod for Jaccard and d2 and dissimMethod2 for Bray-Curtis
 # Beta diversity stats #how far apart are the clusters (distance)
@@ -479,7 +565,7 @@ broom::tidy(TukeyHSD(betadisper(d_carn_2, getElement(sampledf_2, "Time_Point")))
 betadisper(d_carn_2, getElement(sampledf_2, "Replicate"))
 broom::tidy(TukeyHSD(betadisper(d_carn_2, getElement(sampledf_2, "Time_Point"))))
 ```
-
+## Monitored PERMANOVA
 ```{r}
 #Generate Vegan formatted data table
 sampledf2_monitored <- data.frame(sample_data(physeq_obj.monitored))
@@ -493,6 +579,7 @@ broom::tidy(adonis(carnivore_rel_abun_monitored ~ sampledf2_monitored$Direction+
 
 ```
 
+## Aportioned Variance
 
 ```{r, results="hide",warning=FALSE}
 #Apportioning variance: OTU counts
@@ -512,14 +599,8 @@ q$Level<-paste(q$Level, "\n",
 
 q$Level[4] <- paste("Residuals\n0.54")
 
-col.great2 <- c(col3.gr[2],col2.gr[2],col_Zissou1[1],col3.gr[5])
-categories=c("Residual","Time Point","Direction of Tide","Location")
-vals_max <- data.frame(pct=factors_max, cat=categories, col=col.great2)
-treemap(vals_max, index="cat", vSize="pct", vColor="col", type="color", fontsize.labels = 25)
-
-
 #Plot Figure 
-jpeg("Figure3.jpg",  width=6500, height=4000, res=600)
+jpeg(here("figures","Figure3.jpg"),  width=6500, height=4000, res=600)
 q0.plot<-ggplot(q, aes(area = R2, label=Level))+
   geom_treemap(fill=col.great2, color=1, alpha=.8)+
   geom_treemap_text(colour = "white", place = "centre", grow = FALSE, size=24, fontface="bold")+
@@ -533,7 +614,8 @@ dev.off()
 ```
 
 
-#Look into detection of species richness with only spatial replicates vs only temporal replicates
+# Species Accumulation curves
+## Look into detection of species richness with only spatial replicates vs only temporal replicates
 ```{r}
 #Convert to iNEXT format from Observed Species (incidence frequencies)
 physeq_obj.noncontam_no_lab.binary <- transform_sample_counts(physeq_obj.ind, function(abund) 1*(abund>0))
@@ -604,7 +686,10 @@ vegan_Time8_mon<-vegan_otu(Time8_mon)
 vegan_Time9_mon<-vegan_otu(Time9_mon)
 vegan_Time10_mon<-vegan_otu(Time10_mon)
 vegan_Time11_mon<-vegan_otu(Time11_mon)
+```
 
+### Monitored Taxa
+```{r}
 # calculate averages for temporal replicates for monitored species only
 monitored_temporal<-list ("A"=t(veganComm_A_mon),
                 "B"=t(veganComm_B_mon),
@@ -616,13 +701,16 @@ out.mon.temporal$iNextEst
 # 3 samples at A gives average of 25.1 species (23.0-27.1)
 # 3 samples at B gives average of 25.6 species (23.7-27.5)
 # 3 samples at C gives average of 25.2 species (23.0-27.3)
-temporal.mean.mon<-c(25.1,25.6,25.2)
-mean(temporal.mean.mon) # 25.3
-temporal.min.mon<-c(23, 23.7, 23)
-mean(temporal.min.mon) # 23.2
-temporal.max.mon<-c(27.1, 27.5, 27.3)
-mean(temporal.max.mon) # 27.3
+temporal.mean.mon<-c(out.mon.temporal$iNextEst$A$qD[3],out.mon.temporal$iNextEst$B$qD[3],out.mon.temporal$iNextEst$C$qD[3])
 
+mean(temporal.mean.mon) # 21.62733
+temporal.min.mon<-c(out.mon.temporal$iNextEst$A$qD.LCL[3],out.mon.temporal$iNextEst$B$qD.LCL[3],out.mon.temporal$iNextEst$C$qD.LCL[3])
+mean(temporal.min.mon) # 20.1
+temporal.max.mon<-c(out.mon.temporal$iNextEst$A$qD.UCL[3],out.mon.temporal$iNextEst$B$qD.UCL[3],out.mon.temporal$iNextEst$C$qD.UCL[3])
+mean(temporal.max.mon) # 23.147
+
+```
+```{r}
 # calculate averages for spatial replicates for monitored species only
 monitored_spatial<- list ("T00"=t(vegan_Time0_mon),
                 "T01"=t(vegan_Time1_mon),
@@ -640,27 +728,51 @@ mon_spatial<-lapply(monitored_spatial,  as.incfreq)
 t3 <- seq(1,3, by = 1)
 out.mon.spatial <- iNEXT(mon_spatial, q=0, datatype="incidence_freq", size=t3)
 out.mon.spatial$iNextEst
-# 3 samples with T00 gives 26 species (22.6-29.4)
-# 3 samples with T01 gives 20 species (18.0-22.0)
-# 3 samples with T02 gives 24 species (20.3-27.7)
-# 3 samples with T03 gives 26 species (21.4-30.6)
-# 3 samples with T04 gives 28 species (24.5-31.5)
-# 3 samples with T05 gives 22 species (18.7-25.3)
-# 3 samples with T06 gives 19 species (15.7-22.2)
-# 3 samples with T07 gives 23 species (19.8-26.2)
-# 3 samples with T08 gives 23 species (19.5-26.5)
-# 3 samples with T09 gives 23 species (20.5-25.5)
-# 3 samples with T10 gives 27 species (22.6-31.4)
-# 3 samples with T11 gives 29 species (24.5-33.5)
 
 #mean of spatial replicates
-spatial.mean.mon<-c(26, 20, 24, 26, 28, 22, 19, 23, 23, 23, 27, 29)
+spatial.mean.mon<-c(out.mon.spatial$iNextEst$T00$qD[3], 
+                    out.mon.spatial$iNextEst$T01$qD[3], 
+                    out.mon.spatial$iNextEst$T02$qD[3], 
+                    out.mon.spatial$iNextEst$T03$qD[3], 
+                    out.mon.spatial$iNextEst$T04$qD[3], 
+                    out.mon.spatial$iNextEst$T05$qD[3], 
+                    out.mon.spatial$iNextEst$T06$qD[3], 
+                    out.mon.spatial$iNextEst$T07$qD[3], 
+                    out.mon.spatial$iNextEst$T08$qD[3], 
+                    out.mon.spatial$iNextEst$T09$qD[3], 
+                    out.mon.spatial$iNextEst$T10$qD[3], 
+                    out.mon.spatial$iNextEst$T11$qD[3])
 mean(spatial.mean.mon) # 24.2
-lower.spatial.mon<-c(22.6,18,20.3,21.4,24.5, 18.7, 15.7, 19.8, 19.5, 20.5, 22.6, 24.5)
-mean(lower.spatial.mon) # 20.7
-upper.spatial.mon<-c(29.4, 22.0, 27.7, 30.6, 31.5, 25.3, 22.2, 26.2, 26.5, 25.5, 31.4, 33.5)
-mean(upper.spatial.mon) #27.7
+lower.spatial.mon<-c(out.mon.spatial$iNextEst$T00$qD.LCL[3], 
+                    out.mon.spatial$iNextEst$T01$qD.LCL[3], 
+                    out.mon.spatial$iNextEst$T02$qD.LCL[3], 
+                    out.mon.spatial$iNextEst$T03$qD.LCL[3], 
+                    out.mon.spatial$iNextEst$T04$qD.LCL[3], 
+                    out.mon.spatial$iNextEst$T05$qD.LCL[3], 
+                    out.mon.spatial$iNextEst$T06$qD.LCL[3], 
+                    out.mon.spatial$iNextEst$T07$qD.LCL[3], 
+                    out.mon.spatial$iNextEst$T08$qD.LCL[3], 
+                    out.mon.spatial$iNextEst$T09$qD.LCL[3], 
+                    out.mon.spatial$iNextEst$T10$qD.LCL[3], 
+                    out.mon.spatial$iNextEst$T11$qD.LCL[3])
+mean(lower.spatial.mon) # 17.427
+upper.spatial.mon<-c(out.mon.spatial$iNextEst$T00$qD.UCL[3], 
+                    out.mon.spatial$iNextEst$T01$qD.UCL[3], 
+                    out.mon.spatial$iNextEst$T02$qD.UCL[3], 
+                    out.mon.spatial$iNextEst$T03$qD.UCL[3], 
+                    out.mon.spatial$iNextEst$T04$qD.UCL[3], 
+                    out.mon.spatial$iNextEst$T05$qD.UCL[3], 
+                    out.mon.spatial$iNextEst$T06$qD.UCL[3], 
+                    out.mon.spatial$iNextEst$T07$qD.UCL[3], 
+                    out.mon.spatial$iNextEst$T08$qD.UCL[3], 
+                    out.mon.spatial$iNextEst$T09$qD.UCL[3], 
+                    out.mon.spatial$iNextEst$T10$qD.UCL[3], 
+                    out.mon.spatial$iNextEst$T11$qD.UCL[3])
+mean(upper.spatial.mon) 24.40633
+```
 
+### All Taxa
+```{r}
 # calculate averages for temporal replicates for all taxa
 temporal<-list ("A"=t(veganComm_A),
                 "B"=t(veganComm_B),
@@ -671,13 +783,23 @@ out.temporal$iNextEst
 # 3 samples at A gives average of 39.5 species (36.5-42.4)
 # 3 samples at B gives average of 48.5 species (44.8-52.2)
 # 3 samples at C gives average of 43.3 species (39.6-46.9)
-temporal.mean<-c(39.5,48.5,43.3)
-mean(temporal.mean) # 43.8
-temporal.min<-c(36.5, 44.8, 39.6)
-mean(temporal.min) # 40.3
-temporal.max<-c(42.4, 52.2, 46.9)
-mean(temporal.max) # 47.2
+temporal.mean<-c(out.temporal$iNextEst$A$qD[[3]],
+                 out.temporal$iNextEst$B$qD[[3]],
+                 out.temporal$iNextEst$C$qD[[3]])
+mean(temporal.mean) # 36.78333
 
+temporal.min<-c(out.temporal$iNextEst$A$qD.LCL[[3]],
+                 out.temporal$iNextEst$B$qD.LCL[[3]],
+                 out.temporal$iNextEst$C$qD.LCL[[3]])
+mean(temporal.min) # 33.50367
+
+temporal.max<-c(out.temporal$iNextEst$A$qD.UCL[[3]],
+                 out.temporal$iNextEst$B$qD.UCL[[3]],
+                 out.temporal$iNextEst$C$qD.UCL[[3]])
+mean(temporal.max) # 40.06333
+```
+
+```{r}
 # calculate averages for spatial replicates for all taxa
 spatial<- list ("T00"=t(vegan_Time0),
                 "T01"=t(vegan_Time1),
@@ -694,32 +816,54 @@ spatial<- list ("T00"=t(vegan_Time0),
 spatial<-lapply(spatial,  as.incfreq)
 out.spatial <- iNEXT(spatial, q=0, datatype="incidence_freq", size=t3)
 out.spatial$iNextEst
-# 3 samples with T00 gives 44 species (38.8-49.1)
-# 3 samples with T01 gives 39 species (33.9-44.1)
-# 3 samples with T02 gives 40 species (31.9-48.1)
-# 3 samples with T03 gives 41 species (33.9-48.1)
-# 3 samples with T04 gives 45 species (40.1-49.9)
-# 3 samples with T05 gives 65 species (55.2-74.8)
-# 3 samples with T06 gives 33 species (27.6-38.4)
-# 3 samples with T07 gives 32 species (28.2-35.8)
-# 3 samples with T08 gives 31 species (25.9-36.1)
-# 3 samples with T09 gives 35 species (29.9-40.1)
-# 3 samples with T10 gives 47 species (42.1-51.9)
-# 3 samples with T11 gives 41 species (33.6-48.4)
 
 #mean of spatial replicates
-spatial.mean<-c(44, 39, 40, 41, 45, 65, 33, 32, 31, 35, 47, 41)
-mean(spatial.mean) # 41.1
-lower.spatial<-c(38.8,33.9,31.9,33.9,40.1, 55.2, 27.6, 28.2, 25.9, 29.9, 42.1, 33.6)
-mean(lower.spatial) # 35.1
-upper.spatial<-c(49.1, 44.1, 48.1, 48.1, 49.9, 74.8, 38.4, 35.8, 36.1, 40.1, 51.9, 48.4)
-mean(upper.spatial) #47.1
+spatial.mean<-c(out.spatial$iNextEst$T00$qD[3], 
+                    out.spatial$iNextEst$T01$qD[3], 
+                    out.spatial$iNextEst$T02$qD[3], 
+                    out.spatial$iNextEst$T03$qD[3], 
+                    out.spatial$iNextEst$T04$qD[3], 
+                    out.spatial$iNextEst$T05$qD[3], 
+                    out.spatial$iNextEst$T06$qD[3], 
+                    out.spatial$iNextEst$T07$qD[3], 
+                    out.spatial$iNextEst$T08$qD[3], 
+                    out.spatial$iNextEst$T09$qD[3], 
+                    out.spatial$iNextEst$T10$qD[3], 
+                    out.spatial$iNextEst$T11$qD[3])
+mean(spatial.mean) # 35
+lower.spatial<-c(out.spatial$iNextEst$T00$qD.LCL[3], 
+                    out.spatial$iNextEst$T01$qD.LCL[3], 
+                    out.spatial$iNextEst$T02$qD.LCL[3], 
+                    out.spatial$iNextEst$T03$qD.LCL[3], 
+                    out.spatial$iNextEst$T04$qD.LCL[3], 
+                    out.spatial$iNextEst$T05$qD.LCL[3], 
+                    out.spatial$iNextEst$T06$qD.LCL[3], 
+                    out.spatial$iNextEst$T07$qD.LCL[3], 
+                    out.spatial$iNextEst$T08$qD.LCL[3], 
+                    out.spatial$iNextEst$T09$qD.LCL[3], 
+                    out.spatial$iNextEst$T10$qD.LCL[3], 
+                    out.spatial$iNextEst$T11$qD.LCL[3])
+mean(lower.spatial) # 29.20617
+
+upper.spatial<-c(out.spatial$iNextEst$T00$qD.UCL[3], 
+                    out.spatial$iNextEst$T01$qD.UCL[3], 
+                    out.spatial$iNextEst$T02$qD.UCL[3], 
+                    out.spatial$iNextEst$T03$qD.UCL[3], 
+                    out.spatial$iNextEst$T04$qD.UCL[3], 
+                    out.spatial$iNextEst$T05$qD.UCL[3], 
+                    out.spatial$iNextEst$T06$qD.UCL[3], 
+                    out.spatial$iNextEst$T07$qD.UCL[3], 
+                    out.spatial$iNextEst$T08$qD.UCL[3], 
+                    out.spatial$iNextEst$T09$qD.UCL[3], 
+                    out.spatial$iNextEst$T10$qD.UCL[3], 
+                    out.spatial$iNextEst$T11$qD.UCL[3])
+mean(upper.spatial) #40.79383
 
 
 ```
 
 
-#Figure 4. eDNA Metabarcoding Species accumulation curves.
+# Figure 4. eDNA Metabarcoding Species accumulation curves.
 ```{r}
 #Convert to iNEXT format from Observed Species (incidence frequencies)
 physeq_obj.reefcheck.binary <- transform_sample_counts(physeq_obj.reefcheck, function(abund) 1*(abund>0))
@@ -737,7 +881,7 @@ mpa_inc <-list ("All Detected"=t(veganComm2.bin),
 
 #Convert to iNext formatted object
 species_incidence <-lapply(mpa_inc, as.incfreq)
-View(species_incidence)
+
 # Set Sampling Steps
 t <- seq(1, 36, by=1)
 
@@ -749,7 +893,7 @@ out.inc$iNextEst
 out.inc$DataInfo
 
 # Sample‐size‐based R/E curves
-jpeg("Figure4.jpg",  width=6500, height=4000, res=600)
+jpeg(here("figures","Figure4.jpg"),  width=6500, height=4000, res=600)
 ggiNEXT(out.inc, type=1) + 
   facet_wrap(~site, scales="free") + aes(fill=site, color = site) +
   theme_bw(base_size = 18) + scale_fill_manual(values=col_species, name = "Species List") + scale_color_manual(values=col_species, "Species List") + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),panel.background = element_blank()) + ggtitle("") + xlim(1,40) +scale_x_continuous(breaks=c(0,3,6,12,18,24,30,36)) + xlab("Number of Samples") +ylab("Number of Species") +
@@ -763,13 +907,13 @@ dev.off()
 
 ```
 
-#Supplemental Figures
+# Supplemental Figures
 ```{r}
 #NMDS (Figure S2A and Figure S2B )
 ord_all_2020 <- ordinate(physeq_obj.ind, method = "NMDS", distance = d_carn_2)
 sample_data(physeq_obj.ind)
 col.four <- c(col_darjeeling1[3],col_darjeeling1[1],col_darjeeling1[2],col_Darjeeling2[2])
-jpeg("NMDS_DirectionTide_allCA.jpg", width=4000, height=3300, res=600)
+jpeg(here("figures","NMDS_DirectionTide_allCA.jpg"), width=4000, height=3300, res=600)
 nmdsplot_max <- plot_ordination(physeq_obj.ind, ord_all_2020, "Direction", color = "Direction", shape = "Direction") +
   geom_point(size=5) +
   theme_bw() +  stat_ellipse(type = "t", geom = "polygon", alpha = 0.2, aes(group=Direction, fill=Direction)) +
@@ -783,9 +927,11 @@ nmdsplot_max <- plot_ordination(physeq_obj.ind, ord_all_2020, "Direction", color
         axis.title=element_text(size=20,face="bold"),legend.title = element_text( size=12, face="bold"),legend.text = element_text(size=10, face="bold"))
 nmdsplot_max  
 dev.off()
+```
 
+```{r}
 #only CA species data time NMDS Bray
-jpeg("NMDS_TimePoint_allCA.tiff", width=4000, height=3300, res=600)
+jpeg(here("figures","NMDS_TimePoint_allCA.tiff"), width=4000, height=3300, res=600)
 nmdsplot_max_time <- plot_ordination(physeq_obj.ind, ord_all_2020, "Time_Point", color = "Time_Point") +
   geom_point(size=5) +
   theme_bw() +  geom_polygon(type = "t", geom = "polygon", alpha = 0.2, aes(group=Time_Point, fill=Time_Point)) +
@@ -794,14 +940,6 @@ nmdsplot_max_time <- plot_ordination(physeq_obj.ind, ord_all_2020, "Time_Point",
         axis.title=element_text(size=20,face="bold"),legend.title = element_text( size=12, face="bold"),legend.text = element_text(size=10, face="bold")) + labs(fill = "Time Point", color="Time Point")
 nmdsplot_max_time
 dev.off()
-
-#monitored species data tide NMDS Bray
-nmdsplot_monitored <- plot_ordination(physeq_obj.step2_species_monitored, ord_monitored, "High.Low", color = "High.Low", shape = "High.Low") +
-  geom_point(size=5) +
-  theme_bw() +  stat_ellipse(type = "t", geom = "polygon", alpha = 0.2) +
-  theme_ranacapa() +
-  scale_color_manual(values=col.great)
-nmdsplot_monitored
 ```
 
 ```{r}
